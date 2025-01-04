@@ -1,9 +1,11 @@
-name: eclipse
-base: core22
+ename: !- $env[ECLIPSE_PACKAGE]
+name: !? .ename
+base: core24
 
-version: 2024-12
+epackages: !- $import('eclipse-packages.yaml')
+version: !? .epackages.latest
+
 summary: Extensible Tool Platform and Java IDE
-website: https://eclipse.org/ide
 description:
   Eclipse provides IDEs and platforms for nearly every language and architecture.
   We are famous for our Java IDE, C/C++, JavaScript and PHP IDEs built on extensible
@@ -11,22 +13,66 @@ description:
   extensive collection of add-on tools available for software developers.
 
 grade: stable
-confinement: classic
+confinement: strict
 
-architectures:
-- build-on: amd64
-- build-on: arm64
+compression: lzo
+
+platforms:
+  amd64:
+    build-on: amd64
 
 apps:
-  eclipse:
+  !? .ename:
     command: bin/eclipse-wrapper
+    extensions: [gnome]
+    desktop: eclipse.desktop
+    environment:
+      ## https://docs.gtk.org/glib/running.html#environment-variables
+      G_MESSAGES_DEBUG: all
+      ## https://docs.mesa3d.org/envvars.html
+      LIBGL_DEBUG: 1
+      DRI_PRIME_DEBUG: 1
+      MESA_DEBUG: 1
+      MESA_VK_DEVICE_SELECT_DEBUG: 1
+      # AMD_DEBUG: all
+      ## https://trac.webkit.org/wiki/EnvironmentVariables
+      WEBKIT_DEBUG: all
+    plugs:
+      - personal-sourcedir
+      - personal-workspace
+      - personal-gitconfig
+      - personal-sshid
+      - personal-maven-cache
+      - network
+
+plugs:
+  personal-sourcedir:
+    interface: personal-files
+    write:
+    - $HOME/projs
+  personal-workspace:
+    interface: personal-files
+    write:
+    - $HOME/eclipse-workspace
+  personal-gitconfig:
+    interface: personal-files
+    write:
+    - $HOME/.gitconfig
+  personal-sshid:
+    interface: ssh-keys
+  personal-maven-cache:
+    interface: personal-files
+    write:
+    - $HOME/.m2
 
 parts:
   eclipse:
     plugin: dump
-    source:
-      - on amd64: https://download.eclipse.org/technology/epp/downloads/release/${SNAPCRAFT_PROJECT_VERSION}/R/eclipse-java-${SNAPCRAFT_PROJECT_VERSION}-R-linux-gtk-x86_64.tar.gz
-      - on arm64: https://download.eclipse.org/technology/epp/downloads/release/${SNAPCRAFT_PROJECT_VERSION}/R/eclipse-java-${SNAPCRAFT_PROJECT_VERSION}-R-linux-gtk-aarch64.tar.gz
+    source-type: tar
+    source: # TODO use for loop here
+      - on amd64: !? .epackages[$_.version][$_.name].amd64.source
+      - on arm64: !? .epackages[$_.version][$_.name].arm64.source
+    # TODO use source-checksum once supported in multiarch setting
     organize:
       'configuration': 'usr/lib/eclipse/configuration'
       'dropins': 'usr/lib/eclipse/dropins'
@@ -62,14 +108,30 @@ parts:
       rm -r $SNAPCRAFT_PRIME/usr/lib/eclipse/plugins/com.sun.jna_*v*/com/sun/jna/openbsd*/
       rm -r $SNAPCRAFT_PRIME/usr/lib/eclipse/plugins/com.sun.jna_*v*/com/sun/jna/sunos*/
       rm -r $SNAPCRAFT_PRIME/usr/lib/eclipse/plugins/com.sun.jna_*v*/com/sun/jna/win32*/
+    after:
+    - eclipse_deps
   wrappers:
     plugin: dump
     source: snap/local/wrappers
     organize:
       eclipse: bin/eclipse-wrapper
+  eclipse_desktop:
+    plugin: dump
+    source: snap/gui
+  eclipse_deps:
+    plugin: nil
+    stage-snaps:
+    - git-confined
+
+layout:
+  /usr/local/bin:
+    bind: $SNAP/usr/bin
+  /usr/libexec/git-core:
+    symlink: $SNAP/usr/libexec/git-core
+  /usr/share/git-core:
+    symlink: $SNAP/usr/share/git-core
 
 lint:
   ignore:
-  - classic
   - library:
     - usr/lib/**/*.so*
